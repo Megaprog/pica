@@ -147,8 +147,6 @@ exports.WW = WORKER;
 
 // Apply unsharp mask to src
 function mask(src, srcW, srcH, amount, radius, threshold) {
-    console.log(srcW, srcH, amount, radius, threshold);
-
     var hsl = bulkRgbToHsl(src, srcW, srcH);
 
     bulkHslToRgb(hsl.hs, sharp(hsl.l, blur(hsl.l, srcW, srcH, radius), amount, threshold), src, srcW, srcH);
@@ -170,8 +168,8 @@ function blur(l, w, h, radius) {
 
 function axis_blur(l, w, h, radius) {
     var r = new Float64Array(w * h);
-    var vl = new Uint32Array(w);
-    var vr = new Uint32Array(w);
+    var vl = new Uint16Array(w);
+    var vr = new Uint16Array(w);
     var wm = w - 1;
     var div = 1/(radius + radius + 1);
     var yw = 0, yi = 0;
