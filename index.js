@@ -119,9 +119,9 @@ function resizeCanvas(from, to, options, callback) {
     toHeight: to.height,
     quality:  options.quality,
     alpha:    options.alpha,
-    unsharpAmount:    options.unsharpAmount,
+    unsharpAmount:    options.unsharpAmount / 500,
+    unsharpThreshold: options.unsharpThreshold / 100,
     unsharpRadius:    options.unsharpRadius,
-    unsharpThreshold: options.unsharpThreshold,
     transferable: true
   };
 
