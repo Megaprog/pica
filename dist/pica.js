@@ -1,4 +1,4 @@
-/* pica 1.0.7 nodeca/pica */!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.pica=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({"./":[function(require,module,exports){
+!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.pica=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({"/index.js":[function(require,module,exports){
 'use strict';
 
 /*global window:true*/
@@ -46,6 +46,7 @@ function resizeBuffer(options, callback) {
     quality:  options.quality,
     alpha:    options.alpha,
     unsharpAmount:    options.unsharpAmount,
+    unsharpRadius:    options.unsharpRadius,
     unsharpThreshold: options.unsharpThreshold
   };
 
@@ -86,7 +87,7 @@ function resizeBuffer(options, callback) {
   // Fallback to sync call, if WebWorkers not available
   _opts.dest = options.dest;
   resize(_opts, callback);
-  return undefined;
+  return null;
 }
 
 
@@ -120,6 +121,7 @@ function resizeCanvas(from, to, options, callback) {
     quality:  options.quality,
     alpha:    options.alpha,
     unsharpAmount:    options.unsharpAmount,
+    unsharpRadius:    options.unsharpRadius,
     unsharpThreshold: options.unsharpThreshold,
     transferable: true
   };
@@ -140,76 +142,185 @@ exports.resizeBuffer = resizeBuffer;
 exports.resizeCanvas = resizeCanvas;
 exports.WW = WORKER;
 
-},{"./lib/resize":4,"./lib/resize_worker":5,"webworkify":6}],1:[function(require,module,exports){
-// Blur filter
-//
-
+},{"./lib/resize":3,"./lib/resize_worker":4,"webworkify":5}],1:[function(require,module,exports){
 'use strict';
 
+// Apply unsharp mask to src
+function mask(src, srcW, srcH, amount, radius, threshold) {
+    console.log(srcW, srcH, amount, radius, threshold);
 
-var _blurKernel = new Uint8Array([
-  1, 2, 1,
-  2, 4, 2,
-  1, 2, 1
-]);
+    var hsl = bulkRgbToHsl(src, srcW, srcH);
 
-var _bkWidth = Math.floor(Math.sqrt(_blurKernel.length));
-var _bkHalf = Math.floor(_bkWidth / 2);
-var _bkWsum = 0;
-for (var wc=0; wc < _blurKernel.length; wc++) { _bkWsum += _blurKernel[wc]; }
-
-
-function blurPoint(gs, x, y, srcW, srcH) {
-  var bx, by, sx, sy, w, wsum, br;
-  var bPtr = 0;
-  var blurKernel = _blurKernel;
-  var bkHalf = _bkHalf;
-
-  wsum = 0; // weight sum to normalize result
-  br   = 0;
-
-  if (x >= bkHalf && y >= bkHalf && x + bkHalf < srcW && y + bkHalf < srcH) {
-    for (by = 0; by < 3; by++) {
-      for (bx = 0; bx < 3; bx++) {
-        sx = x + bx - bkHalf;
-        sy = y + by - bkHalf;
-
-        br += gs[sx + sy * srcW] * blurKernel[bPtr++];
-      }
-    }
-    return (br - (br % _bkWsum)) / _bkWsum;
-  }
-
-  for (by = 0; by < 3; by++) {
-    for (bx = 0; bx < 3; bx++) {
-      sx = x + bx - bkHalf;
-      sy = y + by - bkHalf;
-
-      if (sx >= 0 && sx < srcW && sy >= 0 && sy < srcH) {
-        w = blurKernel[bPtr];
-        wsum += w;
-        br += gs[sx + sy * srcW] * w;
-      }
-      bPtr++;
-    }
-  }
-  return ((br - (br % wsum)) / wsum)|0;
+    bulkHslToRgb(hsl.hs, sharp(hsl.l, blur(hsl.l, srcW, srcH, radius), amount, threshold), src, srcW, srcH);
 }
 
-function blur(src, srcW, srcH/*, radius*/) {
-  var x, y,
-      output = new Uint16Array(src.length);
-
-  for (x = 0; x < srcW; x++) {
-    for (y = 0; y < srcH; y++) {
-      output[y * srcW + x] = blurPoint(src, x, y, srcW, srcH);
+function sharp(l, blur, amount, threshold) {
+    for (var i = 0; i < l.length; i++) {
+        var diff = l[i] - blur[i];
+        if (Math.abs(diff) > threshold) {
+            l[i] = Math.min(l[i] + diff * amount, 1.0);
+        }
     }
-  }
-
-  return output;
+    return l;
 }
 
-module.exports = blur;
+function blur(l, w, h, radius) {
+    return axis_blur(axis_blur(l, w, h, radius), h, w, radius);
+}
+
+function axis_blur(l, w, h, radius) {
+    var r = new Float64Array(w * h);
+    var vl = new Uint32Array(w);
+    var vr = new Uint32Array(w);
+    var wm = w - 1;
+    var div = 1/(radius + radius + 1);
+    var yw = 0, yi = 0;
+
+    for (var y = 0; y < h; y++) {
+        var sum = 0;
+
+        for (var i = -radius; i <= radius; i++) {
+            sum += l[yi + Math.min(wm, Math.max(i, 0))];
+        }
+
+        for (var x = 0; x < w; x++) {
+            r[(yi % w) * h + (yi / w | 0)] = div * sum;
+
+            if (y === 0){
+                vl[x] = Math.max(x - radius, 0);
+                vr[x] = Math.min(x + radius + 1, wm);
+            }
+
+            sum += l[yw + vr[x]] - l[yw + vl[x]];
+            yi++;
+        }
+        yw += w;
+    }
+
+    return r;
+}
+
+function bulkRgbToHsl(rgb, rgbW, rgbH) {
+    var hs = new Float32Array(rgbW * rgbH * 2);
+    var la = new Float64Array(rgbW * rgbH);
+    var ptr_rgb = 0;
+    var ptr_hs = 0;
+    var ptr_l = 0;
+    var callback = function(h, s, l) {
+        hs[ptr_hs++] = h;
+        hs[ptr_hs++] = s;
+        la[ptr_l++] = l;
+    };
+
+    for (var y = 0; y < rgbH; y++) {
+        for (var x = 0; x < rgbW; x++) {
+            rgbToHsl(rgb[ptr_rgb++], rgb[ptr_rgb++], rgb[ptr_rgb++], callback);
+            ptr_rgb++;
+        }
+    }
+
+    return {hs: hs, l: la};
+}
+
+function bulkHslToRgb(hs, l, rgb, rgbW, rgbH) {
+    var ptr_rgb = 0;
+    var ptr_hs = 0;
+    var ptr_l = 0;
+    var callback = function(r, g, b) {
+        rgb[ptr_rgb++] = r;
+        rgb[ptr_rgb++] = g;
+        rgb[ptr_rgb++] = b;
+        ptr_rgb++;
+    };
+
+    for (var y = 0; y < rgbH; y++) {
+        for (var x = 0; x < rgbW; x++) {
+            hslToRgb(hs[ptr_hs++], hs[ptr_hs++], l[ptr_l++], callback);
+        }
+    }
+
+    return rgb;
+}
+
+var EPSILON = 1e-8;
+var DIV255 = 1/255;
+var DIV3 = 1/3;
+var DIV6 = 1/6;
+var DIV23 = 2/3;
+
+/**
+ * Converts an RGB color value to HSL. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
+ * Assumes r, g, and b are contained in the set [0, 255] and
+ * returns h, s, and l in the set [0, 1].
+ *
+ * @param   Number  r       The red color value
+ * @param   Number  g       The green color value
+ * @param   Number  b       The blue color value
+ * @return  Array           The HSL representation
+ */
+function rgbToHsl(r, g, b, callback) {
+    r *= DIV255;
+    g *= DIV255;
+    b *= DIV255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+
+    if (max == min){
+        h = s = 0; // achromatic
+    }
+    else {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch(max){
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    callback(h, s, l);
+}
+
+/**
+ * Converts an HSL color value to RGB. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
+ * Assumes h, s, and l are contained in the set [0, 1] and
+ * returns r, g, and b in the set [0, 255].
+ *
+ * @param   Number  h       The hue
+ * @param   Number  s       The saturation
+ * @param   Number  l       The lightness
+ * @return  Array           The RGB representation
+ */
+function hslToRgb(h, s, l, callback){
+    var r, g, b;
+
+    if (s < EPSILON) {
+        r = g = b = l; // achromatic
+    }
+    else {
+        var hue2rgb = function hue2rgb(p, q, t){
+            if(t < 0) t += 1;
+            if(t > 1) t -= 1;
+            if(t < DIV6) return p + (q - p) * 6 * t;
+            if(t < 0.5) return q;
+            if(t < DIV23) return p + (q - p) * (DIV23 - t) * 6;
+            return p;
+        };
+
+        var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        var p = 2 * l - q;
+        r = hue2rgb(p, q, h + DIV3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - DIV3);
+    }
+
+    callback(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255));
+}
+
+module.exports = mask;
 
 },{}],2:[function(require,module,exports){
 // High speed resize with tuneable speed/quality ratio
@@ -217,7 +328,7 @@ module.exports = blur;
 'use strict';
 
 
-var unsharp = require('./unsharp');
+var mask = require('./mask');
 
 
 // Precision of fixed FP values
@@ -293,7 +404,7 @@ function createFilters(quality, srcSize, destSize) {
       floatFilter, fxpFilter, total, fixedTotal, pxl, idx, floatVal, fixedVal;
   var leftNotEmpty, rightNotEmpty, filterShift, filterSize;
 
-  var maxFilterElementSize = Math.floor((srcWindow + 1) * 2 );
+  var maxFilterElementSize = Math.floor((srcWindow + 1) * 2);
   var packedFilter    = new Int16Array((maxFilterElementSize + 2) * destSize);
   var packedFilterPtr = 0;
 
@@ -388,6 +499,8 @@ function convolveHorizontally(src, dest, srcW, srcH, destW, filters) {
   for (srcY = 0; srcY < srcH; srcY++) {
     filterPtr  = 0;
 
+    /*eslint-disable space-infix-ops*/
+
     // Apply precomputed filters to each destination row point
     for (destX = 0; destX < destW; destX++) {
       // Get the filter that determines the current output pixel.
@@ -440,6 +553,8 @@ function convolveVertically(src, dest, srcW, srcH, destW, filters) {
   for (srcY = 0; srcY < srcH; srcY++) {
     filterPtr  = 0;
 
+    /*eslint-disable space-infix-ops*/
+
     // Apply precomputed filters to each destination row point
     for (destX = 0; destX < destW; destX++) {
       // Get the filter that determines the current output pixel.
@@ -491,10 +606,11 @@ function resize(options) {
   var destW = options.toWidth;
   var destH = options.toHeight;
   var dest  = options.dest || new Uint8Array(destW * destH * 4);
-  var quality = options.quality === undefined ? 3 : options.quality;
+  var quality = typeof options.quality === 'undefined' ? 3 : options.quality;
   var alpha = options.alpha || false;
-  var unsharpAmount = options.unsharpAmount === undefined ? 0 : (options.unsharpAmount|0);
-  var unsharpThreshold = options.unsharpThreshold === undefined ? 0 : (options.unsharpThreshold|0);
+  var unsharpAmount = typeof options.unsharpAmount === 'undefined' ? 0 : (options.unsharpAmount);
+  var unsharpRadius = typeof options.unsharpRadius === 'undefined' ? 0 : (options.unsharpRadius);
+  var unsharpThreshold = typeof options.unsharpThreshold === 'undefined' ? 0 : (options.unsharpThreshold);
 
   if (srcW < 1 || srcH < 1 || destW < 1 || destH < 1) { return []; }
 
@@ -519,7 +635,7 @@ function resize(options) {
   }
 
   if (unsharpAmount) {
-    unsharp(dest, destW, destH, unsharpAmount, 1.0, unsharpThreshold);
+    mask(dest, destW, destH, unsharpAmount, unsharpRadius, unsharpThreshold);
   }
 
   return dest;
@@ -528,98 +644,7 @@ function resize(options) {
 
 module.exports = resize;
 
-},{"./unsharp":3}],3:[function(require,module,exports){
-// Unsharp mask filter
-//
-// http://stackoverflow.com/a/23322820/1031804
-// USM(O) = O + (2 * (Amount / 100) * (O - GB))
-// GB - gaussial blur.
-//
-// brightness = 0.299*R + 0.587*G + 0.114*B
-// http://stackoverflow.com/a/596243/1031804
-//
-// To simplify math, normalize brighness mutipliers to 2^16:
-//
-// brightness = (19595*R + 38470*G + 7471*B) / 65536
-
-'use strict';
-
-
-var blur = require('./blur');
-
-
-function clampTo8(i) { return i < 0 ? 0 : (i > 255 ? 255 : i); }
-
-// Convert image to greyscale, 16bits FP result (8.8)
-//
-function greyscale(src, srcW, srcH) {
-  var size = srcW * srcH;
-  var result = new Uint16Array(size); // We don't use sign, but that helps to JIT
-  var i, srcPtr;
-
-  for (i = 0, srcPtr = 0; i < size; i++) {
-    result[i] = (src[srcPtr + 2] * 7471       // blue
-               + src[srcPtr + 1] * 38470      // green
-               + src[srcPtr] * 19595) >>> 8;  // red
-    srcPtr = (srcPtr + 4)|0;
-  }
-
-  return result;
-}
-
-
-// Apply unsharp mask to src
-//
-// NOTE: radius is ignored to simplify gaussian blur calculation
-// on practice we need radius 0.3..2.0. Use 1.0 now.
-//
-function unsharp(src, srcW, srcH, amount, radius, threshold) {
-  var x, y, c, diff = 0, corr, srcPtr;
-
-  // Normalized delta multiplier. Expect that:
-  var AMOUNT_NORM = Math.floor(amount * 256 / 50);
-
-  // Convert to grayscale:
-  //
-  // - prevent color drift
-  // - speedup blur calc
-  //
-  var gs = greyscale(src, srcW, srcH);
-  var blured = blur(gs, srcW, srcH, 1);
-  var fpThreshold = threshold << 8;
-  var gsPtr = 0;
-
-  for (y = 0; y < srcH; y++) {
-    for (x = 0; x < srcW; x++) {
-
-      // calculate brightness blur, difference & update source buffer
-
-      diff = gs[gsPtr] - blured[gsPtr];
-
-      // Update source image if thresold exceeded
-      if (Math.abs(diff) > fpThreshold) {
-        // Calculate correction multiplier
-        corr = 65536 + ((diff * AMOUNT_NORM) >> 8);
-        srcPtr = gsPtr * 4;
-
-        c = src[srcPtr];
-        src[srcPtr++] = clampTo8((c * corr) >> 16);
-        c = src[srcPtr];
-        src[srcPtr++] = clampTo8((c * corr) >> 16);
-        c = src[srcPtr];
-        src[srcPtr] = clampTo8((c * corr) >> 16);
-      }
-
-      gsPtr++;
-
-    } // end row
-  } // end column
-}
-
-
-module.exports = unsharp;
-
-},{"./blur":1}],4:[function(require,module,exports){
+},{"./mask":1}],3:[function(require,module,exports){
 // Proxy to simplify split between webworker/plain calls
 'use strict';
 
@@ -631,7 +656,7 @@ module.exports = function (options, callback) {
   callback(null, output);
 };
 
-},{"./pure/resize":2}],5:[function(require,module,exports){
+},{"./pure/resize":2}],4:[function(require,module,exports){
 // Web Worker wrapper for image resize function
 
 'use strict';
@@ -651,7 +676,7 @@ module.exports = function(self) {
   };
 };
 
-},{"./resize":4}],6:[function(require,module,exports){
+},{"./resize":3}],5:[function(require,module,exports){
 var bundleFn = arguments[3];
 var sources = arguments[4];
 var cache = arguments[5];
@@ -705,5 +730,5 @@ module.exports = function (fn) {
     ));
 };
 
-},{}]},{},[])("./")
+},{}]},{},[])("/index.js")
 });
