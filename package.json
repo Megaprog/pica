@@ -37,5 +37,9 @@
     "canvas": "1.1.x",
     "benchmark": "1.0.x",
     "ansi": "0.3.x"
+  },
+  "scripts": {
+    "build": "browserify -r ./index.js -s pica > dist/pica.js",
+    "watch": "watchify -r ./index.js -s pica -o dist/pica.js --debug --verbose"
   }
 }
