@@ -120,9 +120,9 @@ function resizeCanvas(from, to, options, callback) {
     toHeight: to.height,
     quality:  options.quality,
     alpha:    options.alpha,
-    unsharpAmount:    options.unsharpAmount,
+    unsharpAmount:    options.unsharpAmount / 500,
+    unsharpThreshold: options.unsharpThreshold / 100,
     unsharpRadius:    options.unsharpRadius,
-    unsharpThreshold: options.unsharpThreshold,
     transferable: true
   };
 
@@ -147,6 +147,8 @@ exports.WW = WORKER;
 
 // Apply unsharp mask to src
 function mask(src, srcW, srcH, amount, radius, threshold) {
+    console.log(amount, radius, threshold);
+
     var hsl = bulkRgbToHsl(src, srcW, srcH);
 
     bulkHslToRgb(hsl.hs, sharp(hsl.l, blur(hsl.l, srcW, srcH, radius), amount, threshold), src, srcW, srcH);
